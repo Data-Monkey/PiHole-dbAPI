@@ -1,2 +1,5 @@
 # PiHole-dbAPI
 API to Enable / Disable groups in the PiHole gravity.db
+
+
+I need to enable/disable groups via Home Assistant.
