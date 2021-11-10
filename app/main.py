@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response, status
 from fastapi.params import Path
-
+from pydantic import BaseModel
+from typing import Optional
 import sqlite3
 from sqlite3 import Error
 
@@ -9,10 +10,16 @@ import uvicorn
 from os import environ
 
 
-database = r"/etc/pihole/gravity.db"
-
+database = r"../gravity.db"
+#database = r"/etc/pihole/gravity.db"
 
 # ===========================================
+
+
+class Group(BaseModel):
+    name: str 
+    description : Optional[str] = None
+    enabled: Optional[int] = None
 
 
 
@@ -65,12 +72,15 @@ def get_groups():
     return  select_db(database, query)
 
 
-
-@app.get("/group/{group_name}", status_code=status.HTTP_200_OK)
+@app.get("/group/{group_name}", 
+         response_model=Group,
+         status_code=status.HTTP_200_OK)
 def get_group_by_name(group_name: str):
-    """return a dictionaries of the group <group_name>"""
-    query = "select id, name, enabled from 'group' where name = '"+group_name+"'"
-    return select_db(database, query)
+    """returns a json string of the group {group_name}"""
+    query = "select name, enabled from 'group' where name = '"+group_name+"'"
+    group = select_db(database, query)
+    print (group)
+    return group[0]
 
 
 @app.put("/group/{group_name}/{enabled}", status_code=status.HTTP_200_OK)
