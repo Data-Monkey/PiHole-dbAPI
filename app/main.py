@@ -1,7 +1,7 @@
-from fastapi import FastAPI, Response, status
+from fastapi import FastAPI, Body, Response, status
 from fastapi.params import Path
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, List
 import sqlite3
 from sqlite3 import Error
 
@@ -9,19 +9,24 @@ import uvicorn
 
 from os import environ
 
+API_PORT = 8000
 
-database = r"../gravity.db"
-#database = r"/etc/pihole/gravity.db"
+DATABASE = r"/etc/pihole/gravity.db"
 
+# ===========================================
+# == Define API Models
 # ===========================================
 
 
 class Group(BaseModel):
     name: str 
     description : Optional[str] = None
-    enabled: Optional[int] = None
+    enabled: int = Field(..., title="0:Disable, 1:Enable", ge=0, le=10)
 
 
+# ===========================================
+# == Helper Functions
+# ===========================================
 
 def select_db(path_to_db, select_query):
       """Returns data from an SQL query as a list of dicts."""
@@ -57,6 +62,14 @@ def update_db(path_to_db, update_query):
     else:
         return 1 # no records updated        
     
+def select_group(group_name: str):
+    """select a GROUP record from the DB and retun a Group() dict"""
+
+    query = "select name, enabled from 'group' where name = '"+group_name+"'"
+    result = select_db(DATABASE, query)
+
+    return result[0] 
+
 
 # ======================================================
 # API Endpoints 
@@ -64,48 +77,73 @@ def update_db(path_to_db, update_query):
 
 app = FastAPI()
 
-@app.get("/groups", status_code=status.HTTP_200_OK)
+# -------------------- /groups -----------------
+@app.get("/groups", 
+        status_code=status.HTTP_200_OK)
 def get_groups():
     """return a list of dictionaries of all groups"""
 
     query = "select id, name, enabled from 'group'"
-    return  select_db(database, query)
+    return  select_db(DATABASE, query)
 
 
+# -------------------- /group/group_name -----------------
 @app.get("/group/{group_name}", 
          response_model=Group,
          status_code=status.HTTP_200_OK)
 def get_group_by_name(group_name: str):
     """returns a json string of the group {group_name}"""
-    query = "select name, enabled from 'group' where name = '"+group_name+"'"
-    group = select_db(database, query)
-    print (group)
-    return group[0]
+    return select_group(group_name)
 
-
-@app.put("/group/{group_name}/{enabled}", status_code=status.HTTP_200_OK)
-def set_group_enabled(*,
-        group_name: str = Path(..., title="the name of the group to set"), 
-        enabled: int = Path(..., title="0:disable, 1:enable", ge=0, le=1),
-        response: Response):
+@app.put("/group/{group_name}", 
+        response_model=Group,
+        status_code=status.HTTP_200_OK)
+def set_group_enabled_by_payload (
+        group_name: str ,
+        enabled: int = Body(..., title="0:disable, 1:enable", ge=0, le=1)
+        ):
     """
-    enable od disable the group <group_name>
-    returns updated group details
+    enable or disable the group {group_name}
+    on success returns updated group details
 
-    valid values for enabled:
-    0 = disabled
-    1 = enabled 
-    """
+    valid values for payload : <br>
+    0 : disabled
+    1 : enabled 
+    """       
 
     query = "update 'group' set 'enabled'="+str(enabled)+" where name='"+group_name+"'"
-    result = update_db(database, query)
+    result = update_db(DATABASE, query)
     if result == 0:
-        query = "select id, name, enabled from 'group' where name = '"+group_name+"'"
-        return select_db(database, query)
+        # success! read the group back and return it
+        return select_group(group_name)
     else: 
-        response.status_code = status.HTTP_400_BAD_REQUEST
+        #response.status_code = status.HTTP_400_BAD_REQUEST
         return "error: group_name not found, no update made"
 
 
+# @app.put("/group/{group_name}/{enabled}", status_code=status.HTTP_200_OK)
+# def set_group_enabled(*,
+#         group_name: str = Path(..., title="the name of the group to set"), 
+#         enabled: int = Path(..., title="0:disable, 1:enable", ge=0, le=1),
+#         response: Response):
+#     """
+#     enable od disable the group <group_name>
+#     returns updated group details
+
+#     valid values for enabled:
+#     0 = disabled
+#     1 = enabled 
+#     """
+
+#     query = "update 'group' set 'enabled'="+str(enabled)+" where name='"+group_name+"'"
+#     result = update_db(database, query)
+#     if result == 0:
+#         query = "select id, name, enabled from 'group' where name = '"+group_name+"'"
+#         return select_db(database, query)
+#     else: 
+#         response.status_code = status.HTTP_400_BAD_REQUEST
+#         return "error: group_name not found, no update made"
+
+
 if __name__ == '__main__':
-    uvicorn.run(app, port=8000, host="0.0.0.0")
+    uvicorn.run(app, port=API_PORT, host="0.0.0.0")
